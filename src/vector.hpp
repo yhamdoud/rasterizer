@@ -315,4 +315,12 @@ using IVec4 = Vector<int, 4>;
 
 using Color = Vector<uint8_t, 4>;
 
+namespace colors
+{
+constexpr Color red = Color{255, 0, 0, 255};
+constexpr Color green = Color{0, 255, 0, 255};
+constexpr Color blue = Color{0, 0, 255, 255};
+
+} // namespace colors
+
 } // namespace rasterizer
