@@ -29,6 +29,7 @@ class Rasterizer
 
     void run();
     void draw_wireframe();
+    void draw_triangle(IVec2 p1, IVec2 p2, IVec2 p3);
     void draw_line(IVec2 p1, IVec2 p2);
     void draw_point(IVec2 p);
     void set_color(Color color);

@@ -14,6 +14,8 @@
 
 using namespace rasterizer;
 
+using std::round;
+
 constexpr double radians_per_degree = std::numbers::pi / 180.f;
 
 template <typename T>
@@ -78,7 +80,9 @@ void Rasterizer::draw_wireframe()
     const Vec3 model_scale = Vec3{1.f};
     const Vec3 cam_pos = Vec3{0.0f, 0.0f, 0.f};
 
-    const Mat4 model = translate(scale(Mat4{1.f}, model_scale), model_pos);
+    const Mat4 model = translate(
+        rotate(scale(Mat4{1.f}, model_scale), radians(0.f), Vec3::up()),
+        model_pos);
     const Mat4 view = look_at(cam_pos, model_pos, Vec3::up());
     const Mat4 proj =
         perspective(radians(50.f), (float)width / (float)height, 0.1f, 100.f);
@@ -110,7 +114,24 @@ void Rasterizer::draw_wireframe()
                          (1.f - p.y) / 2.f * (float)this->height};
         };
 
+        auto e1 =
+            model * Vec4{v2.position, 1.f} - model * Vec4{v1.position, 1.f};
+        auto e2 =
+            model * Vec4{v3.position, 1.f} - model * Vec4{v1.position, 1.f};
+
+        Vec3 normal = normalize(cross(e1.xyz, e2.xyz));
+        Vec3 l = normalize(Vec3{1.f, 0.5f, 0.25f});
+
+        float n_dot_l = std::max(dot(normal, l), 0.f);
+
+        auto col = n_dot_l * colors::white;
+
+        set_color(Color{col.xyz, 1.f});
+
+        draw_triangle(viewport(p1.xy), viewport(p2.xy), viewport(p3.xy));
+
         // Viewport transformation.
+        set_color(colors::red);
         draw_line(viewport(p1.xy), viewport(p2.xy));
         draw_line(viewport(p2.xy), viewport(p3.xy));
         draw_line(viewport(p1.xy), viewport(p3.xy));
@@ -120,6 +141,47 @@ void Rasterizer::draw_wireframe()
 void Rasterizer::draw_point(IVec2 p)
 {
     SDL_RenderDrawPoint(renderer, p.x, p.y);
+}
+
+// Returns the signed area of the parallelogram spanned by edges p0p1 and p0p2.
+// Given the line p0p1, the edge function has the useful property that:
+//  - edge(p0, p1, p2) = 0 if p2 is on the line,
+//  - edge(p0, p1, p2) > 0 if p2 is to right of the line,
+//  - edge(p0, p1, p2) < 0 if p2 is to right of the line.
+int edge(IVec2 p0, IVec2 p1, IVec2 p2)
+{
+    return (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
+}
+
+// Parallel implementation of Pineda's triangle rasterization algorithm.
+// https://dl.acm.org/doi/pdf/10.1145/54852.378457
+void Rasterizer::draw_triangle(IVec2 p0, IVec2 p1, IVec2 p2)
+{
+    // Calculate bounding box.
+    IVec2 min{std::min({p0.x, p1.x, p2.x}), std::min({p0.y, p1.y, p2.y})};
+    IVec2 max{std::max({p0.x, p1.x, p2.x}), std::max({p0.y, p1.y, p2.y})};
+
+    // Clip triangle.
+    min.x = std::max(0, min.x);
+    min.y = std::max(0, min.y);
+
+    max.x = std::min(width, max.x);
+    max.y = std::min(height, max.y);
+
+    for (auto x = min.x; x < max.x; x++)
+    {
+        for (auto y = min.y; y < max.y; y++)
+        {
+            IVec2 p{x, y};
+
+            auto a0 = edge(p0, p1, p);
+            auto a1 = edge(p1, p2, p);
+            auto a2 = edge(p2, p0, p);
+
+            if (a0 >= 0 && a1 >= 0 && a2 >= 0)
+                draw_point(p);
+        }
+    }
 }
 
 // Integer-only implementation of Bresenham's line algorithm.
@@ -166,5 +228,6 @@ void Rasterizer::draw_line(IVec2 p1, IVec2 p2)
 
 void Rasterizer::set_color(Color color)
 {
-    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+    SDL_SetRenderDrawColor(renderer, round(color.r * 255), round(color.g * 255),
+                           round(color.b * 255), round(color.a * 255));
 }

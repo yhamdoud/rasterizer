@@ -39,7 +39,8 @@ template <typename Vec, typename T> struct VectorBase
         out << "{ ";
 
         for (auto &e : v)
-            out << e << " ";
+            // Print as number.
+            out << +e << " ";
 
         out << "}";
 
@@ -168,6 +169,8 @@ template <typename T, size_t n> struct Vector : VectorBase<Vector<T, n>, T>
 template <typename T> struct Vector<T, 2> : VectorBase<Vector<T, 2>, T>
 {
     static constexpr int size = 2;
+
+    constexpr Vector() = default;
 
     constexpr Vector(const T &e1, const T &e2) : data{e1, e2} {}
 
@@ -313,13 +316,17 @@ using IVec2 = Vector<int, 2>;
 using IVec3 = Vector<int, 3>;
 using IVec4 = Vector<int, 4>;
 
-using Color = Vector<uint8_t, 4>;
+using Color = Vec4;
 
 namespace colors
 {
-constexpr Color red = Color{255, 0, 0, 255};
-constexpr Color green = Color{0, 255, 0, 255};
-constexpr Color blue = Color{0, 0, 255, 255};
+
+constexpr Color white = Color{1.f, 1.f, 1.f, 1.f};
+constexpr Color black = Color{0, 0, 0, 1.f};
+
+constexpr Color red = Color{1.f, 0, 0, 1.f};
+constexpr Color green = Color{0, 1.f, 0, 1.f};
+constexpr Color blue = Color{0, 0, 1.f, 1.f};
 
 } // namespace colors
 
