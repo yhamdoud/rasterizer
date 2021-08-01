@@ -114,28 +114,38 @@ template <typename T, size_t m, size_t n, T... d> struct Matrix
     }
 };
 
-template <typename T, size_t n>
-inline Matrix<T, n, n> translate(Matrix<T, n, n> mat,
-                                 const Vector<T, n - 1> &vec)
+// https://docs.gl/gl3/glTranslate
+template <typename T>
+inline Matrix<T, 4, 4> translate(const Matrix<T, 4, 4> &m,
+                                 const Vector<T, 3> &v)
 {
-    for (size_t i = 0; i < n - 1; i++)
-        mat[i][n - 1] -= vec[i];
-
-    return mat;
+    // clang-format off
+    return m * Matrix<T, 4, 4>{
+        1.f, 0.f, 0.f, v.x,
+        0.f, 1.f, 0.f, v.y,
+        0.f, 0.f, 1.f, v.z,
+        0.f, 0.f, 0.f, 1.f,
+    };
+    // clang-format on
 }
 
-template <typename T, size_t n>
-inline Matrix<T, n, n> scale(Matrix<T, n, n> mat, const Vector<T, n - 1> &vec)
+// https://docs.gl/gl3/glScale
+template <typename T>
+inline Matrix<T, 4, 4> scale(const Matrix<T, 4, 4> &m, const Vector<T, 3> &v)
 {
-    for (size_t i = 0; i < n - 1; i++)
-        mat[i][i] *= vec[i];
-
-    return mat;
+    // clang-format off
+    return m * Matrix<T, 4, 4>{
+        v.x, 0.f, 0.f, 0.f,
+        0.f, v.y, 0.f, 0.f,
+        0.f, 0.f, v.z, 0.f,
+        0.f, 0.f, 0.f, 1.f,
+    };
+    // clang-format on
 }
 
 // https://docs.gl/gl3/glRotate
 template <typename T>
-inline Matrix<T, 4, 4> rotate(const Matrix<T, 4, 4> &mat, T angle,
+inline Matrix<T, 4, 4> rotate(const Matrix<T, 4, 4> &m, T angle,
                               const Vector<T, 3> &axis)
 {
     auto a = normalize(axis);
@@ -146,13 +156,13 @@ inline Matrix<T, 4, 4> rotate(const Matrix<T, 4, 4> &mat, T angle,
 
     // Marix for rotation around an arbitrary axis.
     // clang-format off
-    return Matrix<T, 4, 4>
+    return m * Matrix<T, 4, 4>
     {
-        a.x * t.x + c, a.x * t.y - a.z * s, a.x * t.z + a.y * s, 0,
-        a.y * t.x + a.z * s, a.y * t.y + c, a.y * t.z - a.x * s, 0,
-        a.x * t.z - a.y * s, a.y * t.z + a.x * s, a.z * t.z + c, 0,
-        0, 0, 0, 1,
-    } * mat;
+        a.x * t.x + c, a.x * t.y - a.z * s, a.x * t.z + a.y * s, 0.f,
+        a.y * t.x + a.z * s, a.y * t.y + c, a.y * t.z - a.x * s, 0.f,
+        a.x * t.z - a.y * s, a.y * t.z + a.x * s, a.z * t.z + c, 0.f,
+        0.f, 0.f, 0.f, 1.f,
+    };
     // clang-format on
 }
 
@@ -161,17 +171,17 @@ Matrix<T, 4, 4> look_at(const Vector<T, 3> &pos, const Vector<T, 3> &target,
                         const Vector<T, 3> &up)
 {
     // We look into the negative z-direction by convention.
-    const auto u = normalize(target - pos);
-    const auto v = normalize(cross(up, u));
-    const auto w = cross(u, v);
+    const auto w = normalize(pos - target);
+    const auto u = normalize(cross(w, up));
+    const auto v = cross(u, w);
 
     // clang-format off
-    return  Matrix<T, 4, 4>{
-        v.x, v.y, v.z, -pos.x,
-        w.x, w.y, w.z, -pos.y,
-        u.x, u.y, u.z, -pos.z,
+    return translate(Matrix<T, 4, 4>{
+        u.x, u.y, u.z, 0.f,
+        v.x, v.y, v.z, 0.f,
+        w.x, w.y, w.z, 0.f,
         0.f, 0.f, 0.f, 1.f
-    };
+    }, -pos);
     // clang-format on
 }
 
@@ -188,18 +198,22 @@ Matrix<T, 4, 4> frustrum(const T &left, const T &right, const T &bottom,
         // clang-format off
         2.f * near / rl, 0.f, (right + left) / rl, 0.f,
         0.f, 2.f * near / tb, (top + bottom) / tb, 0.f,
-        0.f, 0.f, far + near / -fn, -2 * far * near / fn,
+        0.f, 0.f, -(far + near) / fn, -2 * far * near / fn,
         0.f, 0.f, -1.f, 0.f,
         // clang-format on
     };
 }
 
+// Perspective projection
+// Vertical fov.
 template <typename T>
 Matrix<T, 4, 4> perspective(const T &fov, const T &aspect, const T &near,
                             const T &far)
 {
     auto top = near * tanf(fov / 2);
     auto right = top * aspect;
+
+    auto f = tanf(fov / 2);
 
     return frustrum(-right, right, -top, top, near, far);
 }
@@ -210,15 +224,15 @@ constexpr Matrix<T, 4, 4> orthographic(const T left, const T right,
                                        const T bottom, const T top,
                                        const T near, const T far)
 {
-    auto fn = far - near;
     auto rl = right - left;
     auto tb = top - bottom;
+    auto fn = far - near;
 
     // clang-format off
     return Matrix<T, 4, 4>{
-        2.f / rl, 0.f, 0.f, (right + left) / -rl,
-        0.f, 2.f / tb, 0.f, (top + bottom) / -tb,
-        0.f, 0.f, -2.f / fn, (far + near) / -fn,
+        2.f / rl, 0.f, 0.f, -(right + left) / rl,
+        0.f, 2.f / tb, 0.f, -(top + bottom) / tb,
+        0.f, 0.f, -2.f / fn, -(far + near) / fn,
         0.f, 0.f, 0.f, 1.f,
     };
     // clang-format on
