@@ -4,6 +4,7 @@
 
 #include <SDL2/SDL.h>
 
+#include "camera.hpp"
 #include "model.hpp"
 #include "vector.hpp"
 
@@ -18,8 +19,11 @@ class Rasterizer
     Model model;
     Color clear_color = Color{0, 0, 0, 255};
 
+    IVec2 mouse_position;
+
     SDL_Window *window;
     SDL_Renderer *renderer;
+    Camera camera;
 
   public:
     Rasterizer(int width, int height, Model &&model);

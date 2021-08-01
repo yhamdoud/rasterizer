@@ -7,13 +7,13 @@
 #include <SDL_mouse.h>
 #include <SDL_video.h>
 
+#include "camera.hpp"
 #include "matrix.hpp"
 #include "model.hpp"
 #include "rasterizer.hpp"
 #include "vector.hpp"
 
 using namespace rasterizer;
-
 using std::round;
 
 constexpr double radians_per_degree = std::numbers::pi / 180.f;
@@ -34,7 +34,8 @@ static IVec2 get_mouse_position()
 static float radians(float degrees) { return degrees * radians_per_degree; }
 
 Rasterizer::Rasterizer(int width, int height, Model &&model)
-    : width{width}, height{height}, model{model}
+    : width{width}, height{height}, model{model}, camera{Vec3{0.f, 0.f, 3.f},
+                                                         Vec3{0.f}}
 {
     if (SDL_Init(SDL_INIT_VIDEO) < 0)
         throw std::runtime_error("Failed to initialize SDL.");
@@ -74,20 +75,27 @@ void Rasterizer::run()
     }
 }
 
+int middle_mouse_down()
+{
+    return SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_MIDDLE;
+}
+
 void Rasterizer::draw_wireframe()
 {
-    const Vec3 model_pos = Vec3{0.f, 0.f, 5.f};
     const Vec3 model_scale = Vec3{1.f};
-    const Vec3 cam_pos = Vec3{0.0f, 0.0f, 0.f};
 
-    const Mat4 model = translate(
-        rotate(scale(Mat4{1.f}, model_scale), radians(0.f), Vec3::up()),
-        model_pos);
-    const Mat4 view = look_at(cam_pos, model_pos, Vec3::up());
+    auto new_mouse_position = get_mouse_position();
+
+    if (middle_mouse_down())
+        camera.update(new_mouse_position - mouse_position);
+
+    mouse_position = new_mouse_position;
+
+    const Mat4 model = scale(Mat4{1.f}, model_scale);
     const Mat4 proj =
-        perspective(radians(50.f), (float)width / (float)height, 0.1f, 100.f);
+        perspective(radians(90.f), (float)width / (float)height, 0.1f, 100.f);
 
-    const Mat4 mvp = proj * view * model;
+    const Mat4 mvp = proj * camera.get_view() * model;
 
     auto mesh = this->model.mesh;
 
@@ -122,19 +130,21 @@ void Rasterizer::draw_wireframe()
         Vec3 normal = normalize(cross(e1.xyz, e2.xyz));
         Vec3 l = normalize(Vec3{1.f, 0.5f, 0.25f});
 
+        Color ambient{0.1f};
+
         float n_dot_l = std::max(dot(normal, l), 0.f);
 
-        auto col = n_dot_l * colors::white;
+        auto col = ambient + n_dot_l * colors::white;
 
-        set_color(Color{col.xyz, 1.f});
+        set_color(Color{col.rgb, 1.f});
 
         draw_triangle(viewport(p1.xy), viewport(p2.xy), viewport(p3.xy));
 
         // Viewport transformation.
         set_color(colors::red);
-        draw_line(viewport(p1.xy), viewport(p2.xy));
-        draw_line(viewport(p2.xy), viewport(p3.xy));
-        draw_line(viewport(p1.xy), viewport(p3.xy));
+        // draw_line(viewport(p1.xy), viewport(p2.xy));
+        // draw_line(viewport(p2.xy), viewport(p3.xy));
+        // draw_line(viewport(p1.xy), viewport(p3.xy));
     }
 }
 
