@@ -1,4 +1,5 @@
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <stdexcept>
@@ -33,9 +34,9 @@ static IVec2 get_mouse_position()
 
 static float radians(float degrees) { return degrees * radians_per_degree; }
 
-Rasterizer::Rasterizer(int width, int height, Model &&model)
-    : width{width}, height{height}, model{model}, camera{Vec3{0.f, 0.f, 3.f},
-                                                         Vec3{0.f}}
+Rasterizer::Rasterizer(size_t width, size_t height, Model &&model)
+    : width{(int)width}, height{(int)height}, model{model},
+      camera{Vec3{0.f, 0.f, 3.f}, Vec3{0.f}}, depth_buffer{width, height}
 {
     if (SDL_Init(SDL_INIT_VIDEO) < 0)
         throw std::runtime_error("Failed to initialize SDL.");
@@ -80,6 +81,8 @@ int middle_mouse_down()
     return SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_MIDDLE;
 }
 
+// Object to viewport.
+
 void Rasterizer::draw_wireframe()
 {
     const Vec3 model_scale = Vec3{1.f};
@@ -105,22 +108,24 @@ void Rasterizer::draw_wireframe()
         auto v2 = mesh.vertices[i + 1];
         auto v3 = mesh.vertices[i + 2];
 
-        // Model to clip space.
-        auto p1 = mvp * Vec4{v1.position, 1.f};
-        // Perspective divison, points end up in NDC space.
-        p1 /= p1.w;
-
-        auto p2 = mvp * Vec4{v2.position, 1.f};
-        p2 /= p2.w;
-
-        auto p3 = mvp * Vec4{v3.position, 1.f};
-        p3 /= p3.w;
-
-        auto viewport = [&](const Vec2 &p)
+        auto viewport = [&](const Vec3 &in)
         {
-            return IVec2{(p.x + 1.f) / 2.f * (float)this->width,
-                         (1.f - p.y) / 2.f * (float)this->height};
+            // Model to clip space.
+            auto p = mvp * Vec4{in, 1.f};
+
+            // Perspective divide to NDC space.
+            p /= p.w;
+
+            // Viewport
+            p.x = (p.x + 1.f) / 2.f * (float)width;
+            p.y = (1.f - p.y) / 2.f * (float)height;
+
+            return p.xyz;
         };
+
+        auto p1 = viewport(v1.position);
+        auto p2 = viewport(v2.position);
+        auto p3 = viewport(v3.position);
 
         auto e1 =
             model * Vec4{v2.position, 1.f} - model * Vec4{v1.position, 1.f};
@@ -138,7 +143,7 @@ void Rasterizer::draw_wireframe()
 
         set_color(Color{col.rgb, 1.f});
 
-        draw_triangle(viewport(p1.xy), viewport(p2.xy), viewport(p3.xy));
+        draw_triangle(p1, p2, p3);
 
         // Viewport transformation.
         set_color(colors::red);
@@ -146,6 +151,8 @@ void Rasterizer::draw_wireframe()
         // draw_line(viewport(p2.xy), viewport(p3.xy));
         // draw_line(viewport(p1.xy), viewport(p3.xy));
     }
+
+    depth_buffer.fill(std::numeric_limits<float>::max());
 }
 
 void Rasterizer::draw_point(IVec2 p)
@@ -158,38 +165,51 @@ void Rasterizer::draw_point(IVec2 p)
 //  - edge(p0, p1, p2) = 0 if p2 is on the line,
 //  - edge(p0, p1, p2) > 0 if p2 is to right of the line,
 //  - edge(p0, p1, p2) < 0 if p2 is to right of the line.
-int edge(IVec2 p0, IVec2 p1, IVec2 p2)
+float edge(Vec2 p0, Vec2 p1, Vec2 p2)
 {
     return (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
 }
 
 // Parallel implementation of Pineda's triangle rasterization algorithm.
 // https://dl.acm.org/doi/pdf/10.1145/54852.378457
-void Rasterizer::draw_triangle(IVec2 p0, IVec2 p1, IVec2 p2)
+void Rasterizer::draw_triangle(Vec3 p0, Vec3 p1, Vec3 p2)
 {
     // Calculate bounding box.
-    IVec2 min{std::min({p0.x, p1.x, p2.x}), std::min({p0.y, p1.y, p2.y})};
-    IVec2 max{std::max({p0.x, p1.x, p2.x}), std::max({p0.y, p1.y, p2.y})};
-
+    Vec2 min{std::min({p0.x, p1.x, p2.x}), std::min({p0.y, p1.y, p2.y})};
+    Vec2 max{std::max({p0.x, p1.x, p2.x}), std::max({p0.y, p1.y, p2.y})};
     // Clip triangle.
-    min.x = std::max(0, min.x);
-    min.y = std::max(0, min.y);
+    min.x = std::max(0.f, min.x);
+    min.y = std::max(0.f, min.y);
 
-    max.x = std::min(width, max.x);
-    max.y = std::min(height, max.y);
+    max.x = std::min((float)width, max.x);
+    max.y = std::min((float)height, max.y);
 
-    for (auto x = min.x; x < max.x; x++)
+    Vec2 p;
+
+    for (p.x = min.x; p.x < max.x; p.x++)
     {
-        for (auto y = min.y; y < max.y; y++)
+        for (p.y = min.y; p.y < max.y; p.y++)
         {
-            IVec2 p{x, y};
 
-            auto a0 = edge(p0, p1, p);
-            auto a1 = edge(p1, p2, p);
-            auto a2 = edge(p2, p0, p);
+            auto b = Vec3{edge(p1.xy, p2.xy, p), edge(p2.xy, p0.xy, p),
+                          edge(p0.xy, p1.xy, p)};
 
-            if (a0 >= 0 && a1 >= 0 && a2 >= 0)
-                draw_point(p);
+            if (b.x >= 0 && b.y >= 0 && b.z >= 0)
+            {
+                draw_point(static_cast<IVec2>(p));
+
+                // Calculate barycentric coordinates.
+                float area = edge(p0.xy, p1.xy, p2.xy);
+                b /= area;
+
+                auto z = dot(b, Vec3{p0.z, p1.z, p2.z});
+
+                if (z < depth_buffer(p.x, p.y))
+                {
+                    depth_buffer(p.x, p.y) = z;
+                    draw_point(static_cast<IVec2>(p));
+                }
+            }
         }
     }
 }

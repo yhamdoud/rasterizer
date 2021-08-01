@@ -176,14 +176,13 @@ template <typename T> struct Vector<T, 2> : VectorBase<Vector<T, 2>, T>
 
     constexpr Vector(const T &e1, const T &e2) : data{e1, e2} {}
 
-    constexpr operator Vector<float, size>() requires(std::is_same_v<T, int>)
+    operator Vector<float, size>() requires(std::is_same_v<T, int>)
     {
         return Vector<float, size>{static_cast<float>(this->x),
                                    static_cast<float>(this->y)};
     }
 
-    constexpr explicit
-    operator Vector<int, size>() requires(std::is_same_v<T, float>)
+    explicit operator Vector<int, size>() requires(std::is_same_v<T, float>)
     {
         return Vector<int, size>{static_cast<int>(this->x),
                                  static_cast<int>(this->y)};
