@@ -5,13 +5,20 @@
 
 #include <SDL2/SDL.h>
 
-#include "buffer.hpp"
 #include "camera.hpp"
+#include "frame_buffer.hpp"
 #include "model.hpp"
 #include "vector.hpp"
 
 namespace rasterizer
 {
+
+enum class BufferType
+{
+    color,
+    depth,
+};
+
 class Rasterizer
 {
   private:
@@ -21,13 +28,18 @@ class Rasterizer
     Model model;
     Color clear_color = Color{0, 0, 0, 255};
 
-    Buffer<float> depth_buffer;
+    FrameBuffer<float> depth_buffer;
+    FrameBuffer<Vector<std::uint8_t, 4>> color_buffer;
 
+    Camera camera;
     IVec2 mouse_position;
 
     SDL_Window *window;
     SDL_Renderer *renderer;
-    Camera camera;
+    SDL_Texture *texture;
+    SDL_Texture *depth_texture;
+
+    BufferType presented_buffer{BufferType::color};
 
   public:
     Rasterizer(std::size_t width, std::size_t height, Model &&model);
@@ -37,9 +49,10 @@ class Rasterizer
 
     void run();
     void draw_wireframe();
-    void draw_triangle(Vec3 p0, Vec3 p1, Vec3 p2);
+    void draw_triangle(Vec3 p0, Vec3 p1, Vec3 p2, Color color);
     void draw_line(IVec2 p1, IVec2 p2);
     void draw_point(IVec2 p);
+    void draw_point(Vec2 p, Color c);
     void set_color(Color color);
 };
 

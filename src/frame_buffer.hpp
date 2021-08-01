@@ -3,15 +3,16 @@
 #include <array>
 #include <memory>
 
-template <typename T> class Buffer
+template <typename T> class FrameBuffer
 {
+    using type = T;
 
-    std::unique_ptr<T[]> buffer;
     size_t width;
     size_t height;
+    std::unique_ptr<T[]> buffer;
 
   public:
-    Buffer(std::size_t width, std::size_t height)
+    FrameBuffer(std::size_t width, std::size_t height)
         : width{width}, height{height}, buffer{std::make_unique<T[]>(width *
                                                                      height)}
     {
@@ -21,6 +22,8 @@ template <typename T> class Buffer
     {
         return buffer.get()[x + y * width];
     }
+
+    T *get() { return buffer.get(); }
 
     void fill(T v)
     {

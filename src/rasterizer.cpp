@@ -1,3 +1,5 @@
+#include <SDL_keycode.h>
+#include <SDL_render.h>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -36,18 +38,23 @@ static float radians(float degrees) { return degrees * radians_per_degree; }
 
 Rasterizer::Rasterizer(size_t width, size_t height, Model &&model)
     : width{(int)width}, height{(int)height}, model{model},
-      camera{Vec3{0.f, 0.f, 3.f}, Vec3{0.f}}, depth_buffer{width, height}
+      camera{Vec3{0.f, 0.f, 3.f}, Vec3{0.f}}, depth_buffer{width, height},
+      color_buffer{width, height}
 {
     if (SDL_Init(SDL_INIT_VIDEO) < 0)
         throw std::runtime_error("Failed to initialize SDL.");
 
     SDL_CreateWindowAndRenderer(width, height, 0, &window, &renderer);
+    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                                SDL_TEXTUREACCESS_STATIC, width, height);
 }
 
 Rasterizer::~Rasterizer()
 {
     SDL_DestroyWindow(window);
     SDL_DestroyRenderer(renderer);
+    SDL_DestroyTexture(texture);
+
     SDL_Quit();
 }
 
@@ -64,15 +71,29 @@ void Rasterizer::run()
         case SDL_QUIT:
             close_window = true;
             break;
+        case SDL_KEYDOWN:
+            switch (event.key.keysym.sym)
+            {
+            case SDLK_f:
+                if (presented_buffer == BufferType::color)
+                    presented_buffer = BufferType::depth;
+                else
+                    presented_buffer = BufferType::color;
+            }
         }
+
+        draw_wireframe();
+
+        SDL_UpdateTexture(texture, nullptr, color_buffer.get(),
+                          width * 4 * sizeof(uint8_t));
 
         set_color(clear_color);
         SDL_RenderClear(renderer);
-
-        set_color(colors::red);
-        draw_wireframe();
-
+        SDL_RenderCopy(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
+
+        color_buffer.fill(0.f);
+        depth_buffer.fill(std::numeric_limits<float>::max());
     }
 }
 
@@ -141,9 +162,9 @@ void Rasterizer::draw_wireframe()
 
         auto col = ambient + n_dot_l * colors::white;
 
-        set_color(Color{col.rgb, 1.f});
+        // set_color(Color{col.rgb, 1.f});
 
-        draw_triangle(p1, p2, p3);
+        draw_triangle(p1, p2, p3, col);
 
         // Viewport transformation.
         set_color(colors::red);
@@ -151,8 +172,12 @@ void Rasterizer::draw_wireframe()
         // draw_line(viewport(p2.xy), viewport(p3.xy));
         // draw_line(viewport(p1.xy), viewport(p3.xy));
     }
+}
 
-    depth_buffer.fill(std::numeric_limits<float>::max());
+void Rasterizer::draw_point(Vec2 p, Color c)
+{
+    color_buffer(p.x, p.y) =
+        Vector<uint8_t, 4>{c.r * 255, c.g * 255, c.b * 255, c.a * 255};
 }
 
 void Rasterizer::draw_point(IVec2 p)
@@ -172,7 +197,7 @@ float edge(Vec2 p0, Vec2 p1, Vec2 p2)
 
 // Parallel implementation of Pineda's triangle rasterization algorithm.
 // https://dl.acm.org/doi/pdf/10.1145/54852.378457
-void Rasterizer::draw_triangle(Vec3 p0, Vec3 p1, Vec3 p2)
+void Rasterizer::draw_triangle(Vec3 p0, Vec3 p1, Vec3 p2, Color color)
 {
     // Calculate bounding box.
     Vec2 min{std::min({p0.x, p1.x, p2.x}), std::min({p0.y, p1.y, p2.y})};
@@ -207,7 +232,10 @@ void Rasterizer::draw_triangle(Vec3 p0, Vec3 p1, Vec3 p2)
                 if (z < depth_buffer(p.x, p.y))
                 {
                     depth_buffer(p.x, p.y) = z;
-                    draw_point(static_cast<IVec2>(p));
+                    draw_point(p, color);
+
+                    if (presented_buffer == BufferType::depth)
+                        draw_point(p, Color{1 / z, 1 / z, 1 / z, 1.f});
                 }
             }
         }

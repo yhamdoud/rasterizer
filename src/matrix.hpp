@@ -213,8 +213,6 @@ Matrix<T, 4, 4> perspective(const T &fov, const T &aspect, const T &near,
     auto top = near * tanf(fov / 2);
     auto right = top * aspect;
 
-    auto f = tanf(fov / 2);
-
     return frustrum(-right, right, -top, top, near, far);
 }
 
