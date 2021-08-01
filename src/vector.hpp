@@ -100,6 +100,8 @@ template <typename Vec, typename T> struct VectorBase
     friend constexpr Vec operator*(Vec v1, const Vec &v2) { return v1 *= v2; }
     friend constexpr Vec operator/(Vec v1, const Vec &v2) { return v1 /= v2; }
 
+    friend constexpr Vec operator-(Vec v) { return T{-1} * v; }
+
     // Scalar arithmetic
 
     constexpr Vec &operator*=(const T &s)
@@ -229,9 +231,9 @@ template <typename T> struct Vector<T, 3> : VectorBase<Vector<T, 3>, T>
     friend constexpr auto cross(const Vector &v1, const Vector &v2)
     {
         return Vector{
-            v1.y * v2.z + v1.z * v2.y,
-            v1.z * v2.x + v1.x * v2.z,
-            v1.x * v2.y + v1.y * v2.x,
+            v1.y * v2.z - v1.z * v2.y,
+            v1.z * v2.x - v1.x * v2.z,
+            v1.x * v2.y - v1.y * v2.x,
         };
     }
 
@@ -263,6 +265,8 @@ template <typename T> struct Vector<T, 4> : VectorBase<Vector<T, 4>, T>
     static constexpr int size = 4;
 
     constexpr Vector() : data{} {}
+
+    constexpr Vector(const T &e) : data{e, e, e, e} {}
 
     constexpr Vector(const T &e1, const T &e2, const T &e3, const T &e4)
         : data{e1, e2, e3, e4}
