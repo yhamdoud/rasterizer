@@ -60,23 +60,30 @@ Model Model::from_obj(const std::filesystem::path &path)
         }
         else if (type == "f")
         {
-            for (int i = 0; i < 3; i++)
+            string ln;
+            getline(ss, ln);
+
+            std::array<int, 3> vi, uvi, ni;
+
+            if (sscanf(ln.c_str(), "%d/%d/%d %d/%d/%d %d/%d/%d\n", &vi[0],
+                       &uvi[0], &ni[0], &vi[1], &uvi[1], &ni[1], &vi[2],
+                       &uvi[2], &ni[2]) == 9)
             {
-                string tmp;
-                size_t idx, uv_idx, nrm_idx;
-
-                getline(ss, tmp, '/');
-                idx = std::stoi(tmp);
-
-                getline(ss, tmp, '/');
-                uv_idx = std::stoi(tmp);
-
-                getline(ss, tmp, ' ');
-                nrm_idx = std::stoi(tmp);
-
                 // OBJ uses zero based-indexing.
-                vertices.push_back(Vertex{positions[--idx], normals[--nrm_idx],
-                                          uvs[--uv_idx]});
+                for (auto i = 0; i < 3; i++)
+                    vertices.push_back(Vertex{positions[--vi[i]],
+                                              normals[--ni[i]], uvs[--uvi[i]]});
+            }
+            else if (sscanf(ln.c_str(), "%d %d %d", &vi[0], &vi[1], &vi[2]) ==
+                     3)
+            {
+                for (auto i = 0; i < 3; i++)
+                    vertices.push_back(
+                        Vertex{positions[--vi[i]], Vec3{0}, Vec2{0}});
+            }
+            else
+            {
+                throw std::runtime_error{"Error while parsing line: " + line};
             }
         }
 

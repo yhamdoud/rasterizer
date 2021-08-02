@@ -174,6 +174,8 @@ template <typename T> struct Vector<T, 2> : VectorBase<Vector<T, 2>, T>
 
     constexpr Vector() = default;
 
+    constexpr Vector(const T &e) : data{e, e} {}
+
     constexpr Vector(const T &e1, const T &e2) : data{e1, e2} {}
 
     operator Vector<float, size>() requires(std::is_same_v<T, int>)

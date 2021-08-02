@@ -65,21 +65,28 @@ void Rasterizer::run()
 
     while (!close_window)
     {
+
+        // Event polling
         SDL_Event event;
-        SDL_PollEvent(&event);
-        switch (event.type)
+        while (SDL_PollEvent(&event))
         {
-        case SDL_QUIT:
-            close_window = true;
-            break;
-        case SDL_KEYDOWN:
-            switch (event.key.keysym.sym)
+            switch (event.type)
             {
-            case SDLK_f:
-                if (presented_buffer == BufferType::color)
-                    presented_buffer = BufferType::depth;
-                else
-                    presented_buffer = BufferType::color;
+            case SDL_QUIT:
+                close_window = true;
+                break;
+            case SDL_KEYDOWN:
+                switch (event.key.keysym.sym)
+                {
+                case SDLK_f:
+                    if (presented_buffer == BufferType::color)
+                        presented_buffer = BufferType::depth;
+                    else
+                        presented_buffer = BufferType::color;
+
+                    break;
+                }
+                break;
             }
         }
 
@@ -115,7 +122,7 @@ int middle_mouse_down()
 
 void Rasterizer::draw_wireframe()
 {
-    const Vec3 model_scale = Vec3{1.f};
+    const Vec3 model_scale = Vec3{10.f};
 
     auto new_mouse_position = get_mouse_position();
 
