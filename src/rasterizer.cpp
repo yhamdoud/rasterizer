@@ -190,32 +190,37 @@ void Rasterizer::draw_point(IVec2 p)
 //  - edge(p0, p1, p2) = 0 if p2 is on the line,
 //  - edge(p0, p1, p2) > 0 if p2 is to right of the line,
 //  - edge(p0, p1, p2) < 0 if p2 is to right of the line.
-float edge(Vec2 p0, Vec2 p1, Vec2 p2)
+int edge(IVec2 p0, IVec2 p1, IVec2 p2)
 {
     return (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
 }
 
 // Parallel implementation of Pineda's triangle rasterization algorithm.
 // https://dl.acm.org/doi/pdf/10.1145/54852.378457
-void Rasterizer::draw_triangle(Vec3 p0, Vec3 p1, Vec3 p2, Color color)
+void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
 {
+    // FIXME: Snapping pixels to the grid; not good.
+    auto p0 = static_cast<IVec3>(v0);
+    auto p1 = static_cast<IVec3>(v1);
+    auto p2 = static_cast<IVec3>(v2);
+
     // Calculate bounding box.
-    Vec2 min{std::min({p0.x, p1.x, p2.x}), std::min({p0.y, p1.y, p2.y})};
-    Vec2 max{std::max({p0.x, p1.x, p2.x}), std::max({p0.y, p1.y, p2.y})};
+    IVec2 min{std::min({p0.x, p1.x, p2.x}), std::min({p0.y, p1.y, p2.y})};
+    IVec2 max{std::max({p0.x, p1.x, p2.x}), std::max({p0.y, p1.y, p2.y})};
+
     // Clip triangle.
-    min.x = std::max(0.f, min.x);
-    min.y = std::max(0.f, min.y);
+    min.x = std::max(0, min.x);
+    min.y = std::max(0, min.y);
 
-    max.x = std::min((float)width, max.x);
-    max.y = std::min((float)height, max.y);
+    max.x = std::min(width, max.x);
+    max.y = std::min(height, max.y);
 
-    Vec2 p;
+    IVec2 p;
 
     for (p.x = min.x; p.x < max.x; p.x++)
     {
         for (p.y = min.y; p.y < max.y; p.y++)
         {
-
             auto b = Vec3{edge(p1.xy, p2.xy, p), edge(p2.xy, p0.xy, p),
                           edge(p0.xy, p1.xy, p)};
 
@@ -223,11 +228,11 @@ void Rasterizer::draw_triangle(Vec3 p0, Vec3 p1, Vec3 p2, Color color)
             {
                 draw_point(static_cast<IVec2>(p));
 
-                // Calculate barycentric coordinates.
+                // Calculate barycentric coordinates from edge function result.
                 float area = edge(p0.xy, p1.xy, p2.xy);
                 b /= area;
 
-                auto z = dot(b, Vec3{p0.z, p1.z, p2.z});
+                auto z = dot(b, Vec3{v0.z, v1.z, v2.z});
 
                 if (z < depth_buffer(p.x, p.y))
                 {
