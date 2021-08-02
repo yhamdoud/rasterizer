@@ -1,5 +1,6 @@
 #pragma once
 
+#include <SDL_timer.h>
 #include <array>
 #include <memory>
 
@@ -38,6 +39,8 @@ class Rasterizer
     SDL_Renderer *renderer;
     SDL_Texture *texture;
     SDL_Texture *depth_texture;
+
+    uint prev_tick;
 
     BufferType presented_buffer{BufferType::color};
 

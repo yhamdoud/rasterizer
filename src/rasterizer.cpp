@@ -1,5 +1,6 @@
 #include <SDL_keycode.h>
 #include <SDL_render.h>
+#include <SDL_timer.h>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -94,6 +95,14 @@ void Rasterizer::run()
 
         color_buffer.fill(0.f);
         depth_buffer.fill(std::numeric_limits<float>::max());
+
+        // Show FPS.
+        int tick = SDL_GetTicks();
+        int fps = 1000.f / (tick - prev_tick);
+        prev_tick = tick;
+
+        // Clear and return to beginning of line.
+        std::cout << "\33[2K\r" << fps << std::flush;
     }
 }
 
@@ -197,6 +206,9 @@ int edge(IVec2 p0, IVec2 p1, IVec2 p2)
 
 // Parallel implementation of Pineda's triangle rasterization algorithm.
 // https://dl.acm.org/doi/pdf/10.1145/54852.378457
+// https://fgiesen.wordpress.com/2013/02/10/optimizing-the-basic-rasterizer/
+// https://fgiesen.wordpress.com/2013/02/08/triangle-rasterization-in-practice/
+// https://scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/
 void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
 {
     // FIXME: Snapping pixels to the grid; not good.
