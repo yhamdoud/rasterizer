@@ -122,7 +122,7 @@ int middle_mouse_down()
 
 void Rasterizer::draw_wireframe()
 {
-    const Vec3 model_scale = Vec3{10.f};
+    const Vec3 model_scale = Vec3{1.f};
 
     auto new_mouse_position = get_mouse_position();
 
@@ -204,8 +204,8 @@ void Rasterizer::draw_point(IVec2 p)
 // Returns the signed area of the parallelogram spanned by edges p0p1 and p0p2.
 // Given the line p0p1, the edge function has the useful property that:
 //  - edge(p0, p1, p2) = 0 if p2 is on the line,
-//  - edge(p0, p1, p2) > 0 if p2 is to right of the line,
-//  - edge(p0, p1, p2) < 0 if p2 is to right of the line.
+//  - edge(p0, p1, p2) > 0 if p2 is above/right of the line,
+//  - edge(p0, p1, p2) < 0 if p2 is under/left of the line.
 int edge(IVec2 p0, IVec2 p1, IVec2 p2)
 {
     return (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
@@ -234,24 +234,32 @@ void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
     max.x = std::min(width, max.x);
     max.y = std::min(height, max.y);
 
-    IVec2 p;
+    // Triangle edges used for incremental evaluation of edge function.
+    IVec3 edx{p2.y - p1.y, p0.y - p2.y, p1.y - p0.y};
+    IVec3 edy{p2.x - p1.x, p0.x - p2.x, p1.x - p0.x};
 
-    for (p.x = min.x; p.x < max.x; p.x++)
+    IVec2 p{min.x, min.y};
+
+    IVec3 by{edge(p1.xy, p2.xy, p), edge(p2.xy, p0.xy, p),
+             edge(p0.xy, p1.xy, p)};
+
+    for (p.y = min.y; p.y < max.y; p.y++)
     {
-        for (p.y = min.y; p.y < max.y; p.y++)
-        {
-            auto b = Vec3{edge(p1.xy, p2.xy, p), edge(p2.xy, p0.xy, p),
-                          edge(p0.xy, p1.xy, p)};
+        auto b = by;
 
+        for (p.x = min.x; p.x < max.x; p.x++)
+        {
+            // Draw pixel if p is inside triangle.
             if (b.x >= 0 && b.y >= 0 && b.z >= 0)
             {
                 draw_point(static_cast<IVec2>(p));
 
                 // Calculate barycentric coordinates from edge function result.
-                float area = edge(p0.xy, p1.xy, p2.xy);
-                b /= area;
+                int area = edge(p0.xy, p1.xy, p2.xy);
 
-                auto z = dot(b, Vec3{v0.z, v1.z, v2.z});
+                Vec3 bfloat = static_cast<Vec3>(b);
+
+                float z = dot(bfloat / area, Vec3{v0.z, v1.z, v2.z});
 
                 if (z < depth_buffer(p.x, p.y))
                 {
@@ -262,7 +270,12 @@ void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
                         draw_point(p, Color{1 / z, 1 / z, 1 / z, 1.f});
                 }
             }
+
+            // The edge function can be computed incrementally.
+            b -= edx;
         }
+
+        by += edy;
     }
 }
 
