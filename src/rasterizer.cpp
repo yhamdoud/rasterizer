@@ -218,14 +218,24 @@ int edge(IVec2 p0, IVec2 p1, IVec2 p2)
 // https://scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/
 void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
 {
+    int prec = 16;
+    float fprec = 16.f;
+
     // FIXME: Snapping pixels to the grid; not good.
-    auto p0 = static_cast<IVec3>(v0);
-    auto p1 = static_cast<IVec3>(v1);
-    auto p2 = static_cast<IVec3>(v2);
+    // Fixed-point viewport coordinates.
+    // IVec2 p0{std::round(fprec * v0.x), std::round(fprec * v0.y)};
+    // IVec2 p1{std::round(fprec * v1.x), std::round(fprec * v1.y)};
+    // IVec2 p2{std::round(fprec * v2.x), std::round(fprec * v2.y)};
+
+    IVec2 p0{fprec * v0.x, fprec * v0.y};
+    IVec2 p1{fprec * v1.x, fprec * v1.y};
+    IVec2 p2{fprec * v2.x, fprec * v2.y};
 
     // Calculate bounding box.
     IVec2 min{std::min({p0.x, p1.x, p2.x}), std::min({p0.y, p1.y, p2.y})};
+    min /= prec;
     IVec2 max{std::max({p0.x, p1.x, p2.x}), std::max({p0.y, p1.y, p2.y})};
+    max /= prec;
 
     // Clip triangle.
     min.x = std::max(0, min.x);
@@ -236,12 +246,12 @@ void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
 
     // Triangle edges used for incremental evaluation of edge function.
     IVec3 edx{p2.y - p1.y, p0.y - p2.y, p1.y - p0.y};
+    edx *= prec;
     IVec3 edy{p2.x - p1.x, p0.x - p2.x, p1.x - p0.x};
+    edy *= prec;
 
-    IVec2 p{min.x, min.y};
-
-    IVec3 by{edge(p1.xy, p2.xy, p), edge(p2.xy, p0.xy, p),
-             edge(p0.xy, p1.xy, p)};
+    IVec2 p = static_cast<IVec2>(Vec2{min.x + 0.5f, min.y + 0.5f} * fprec);
+    IVec3 by{edge(p1, p2, p), edge(p2, p0, p), edge(p0, p1, p)};
 
     for (p.y = min.y; p.y < max.y; p.y++)
     {
@@ -252,10 +262,8 @@ void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
             // Draw pixel if p is inside triangle.
             if (b.x >= 0 && b.y >= 0 && b.z >= 0)
             {
-                draw_point(static_cast<IVec2>(p));
-
                 // Calculate barycentric coordinates from edge function result.
-                int area = edge(p0.xy, p1.xy, p2.xy);
+                int area = edge(p0, p1, p2);
 
                 Vec3 bfloat = static_cast<Vec3>(b);
 
