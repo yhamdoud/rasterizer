@@ -122,7 +122,7 @@ int middle_mouse_down()
 
 void Rasterizer::draw_wireframe()
 {
-    const Vec3 model_scale = Vec3{1.f};
+    const Vec3 model_scale = Vec3{1.5f};
 
     auto new_mouse_position = get_mouse_position();
 
@@ -148,7 +148,7 @@ void Rasterizer::draw_wireframe()
         auto viewport = [&](const Vec3 &in)
         {
             // Model to clip space.
-            auto p = mvp * Vec4{in, 1.f};
+            Vec4 p = mvp * Vec4{in, 1.f};
 
             // Perspective divide to NDC space.
             p /= p.w;
@@ -213,25 +213,21 @@ int edge(IVec2 p0, IVec2 p1, IVec2 p2)
 
 // Parallel implementation of Pineda's triangle rasterization algorithm.
 // https://dl.acm.org/doi/pdf/10.1145/54852.378457
-// https://fgiesen.wordpress.com/2013/02/10/optimizing-the-basic-rasterizer/
 // https://fgiesen.wordpress.com/2013/02/08/triangle-rasterization-in-practice/
+// https://fgiesen.wordpress.com/2013/02/10/optimizing-the-basic-rasterizer/
 // https://scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/
+// https://web.archive.org/web/20130816170418/http://devmaster.net/forums/topic/1145-advanced-rasterization/
 void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
 {
     int prec = 16;
-    float fprec = 16.f;
+    float fprec = static_cast<float>(prec);
 
     // FIXME: Snapping pixels to the grid; not good.
-    // Fixed-point viewport coordinates.
-    // IVec2 p0{std::round(fprec * v0.x), std::round(fprec * v0.y)};
-    // IVec2 p1{std::round(fprec * v1.x), std::round(fprec * v1.y)};
-    // IVec2 p2{std::round(fprec * v2.x), std::round(fprec * v2.y)};
+    // Use fixed-point screen coordinates for sub-pixel precision.
+    IVec2 p0{std::round(fprec * v0.x), std::round(fprec * v0.y)};
+    IVec2 p1{std::round(fprec * v1.x), std::round(fprec * v1.y)};
+    IVec2 p2{std::round(fprec * v2.x), std::round(fprec * v2.y)};
 
-    IVec2 p0{fprec * v0.x, fprec * v0.y};
-    IVec2 p1{fprec * v1.x, fprec * v1.y};
-    IVec2 p2{fprec * v2.x, fprec * v2.y};
-
-    // Calculate bounding box.
     IVec2 min{std::min({p0.x, p1.x, p2.x}), std::min({p0.y, p1.y, p2.y})};
     min /= prec;
     IVec2 max{std::max({p0.x, p1.x, p2.x}), std::max({p0.y, p1.y, p2.y})};
@@ -244,29 +240,36 @@ void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
     max.x = std::min(width, max.x);
     max.y = std::min(height, max.y);
 
-    // Triangle edges used for incremental evaluation of edge function.
-    IVec3 edx{p2.y - p1.y, p0.y - p2.y, p1.y - p0.y};
-    edx *= prec;
-    IVec3 edy{p2.x - p1.x, p0.x - p2.x, p1.x - p0.x};
-    edy *= prec;
+    // Pixel centers are located at (0.5, 0.5).
+    IVec2 p{round(fprec * (min.x + 0.5f)), round(fprec * (min.y + 0.5f))};
 
-    IVec2 p = static_cast<IVec2>(Vec2{min.x + 0.5f, min.y + 0.5f} * fprec);
-    IVec3 by{edge(p1, p2, p), edge(p2, p0, p), edge(p0, p1, p)};
+    // Precompute triangle edges for incremental computation of edge function.
+    IVec3 b_row{edge(p1, p2, p), edge(p2, p0, p), edge(p0, p1, p)};
+    IVec3 b_dx{p2.y - p1.y, p0.y - p2.y, p1.y - p0.y};
+    IVec3 b_dy{p2.x - p1.x, p0.x - p2.x, p1.x - p0.x};
+    b_dx *= prec;
+    b_dy *= prec;
 
-    for (p.y = min.y; p.y < max.y; p.y++)
+    int area = edge(p0, p1, p2);
+
+    // Adhere to the top-left rule fill convention by adding bias values.
+    // In clockwise order, left edges must go up while top edges stay horizontal
+    // and go right.
+    b_row += prec * IVec3{b_dy.x > 0 || (b_dy.x == 0 && b_dx.x > 0),
+                          b_dy.y > 0 || (b_dy.y == 0 && b_dx.y > 0),
+                          b_dy.z > 0 || (b_dy.z == 0 && b_dx.z > 0)};
+
+    for (p.y = min.y; p.y <= max.y; p.y++)
     {
-        auto b = by;
+        auto b_col = b_row;
 
-        for (p.x = min.x; p.x < max.x; p.x++)
+        for (p.x = min.x; p.x <= max.x; p.x++)
         {
             // Draw pixel if p is inside triangle.
-            if (b.x >= 0 && b.y >= 0 && b.z >= 0)
+            if (b_col.x > 0 && b_col.y > 0 && b_col.z > 0)
             {
-                // Calculate barycentric coordinates from edge function result.
-                int area = edge(p0, p1, p2);
-
-                Vec3 bfloat = static_cast<Vec3>(b);
-
+                // Normalize the barycentric coordinates.
+                Vec3 bfloat = static_cast<Vec3>(b_col);
                 float z = dot(bfloat / area, Vec3{v0.z, v1.z, v2.z});
 
                 if (z < depth_buffer(p.x, p.y))
@@ -279,11 +282,10 @@ void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
                 }
             }
 
-            // The edge function can be computed incrementally.
-            b -= edx;
+            b_col -= b_dx;
         }
 
-        by += edy;
+        b_row += b_dy;
     }
 }
 
