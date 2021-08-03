@@ -10,8 +10,12 @@ set(SOURCE_DIR "src")
 
 file(GLOB SOURCE_FILES "${SOURCE_DIR}/*.cpp" "${SOURCE_DIR}/*.hpp")
 
+# SDL2
 find_package(SDL2 REQUIRED)
 include_directories(${PROJECT_NAME} ${SDL2_INCLUDE_DIRS})
+
+# stb_image
+include_directories(${PROJECT_NAME} "${CMAKE_SOURCE_DIR}/extern/stb/")
 
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2)
