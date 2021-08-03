@@ -39,7 +39,7 @@ static float radians(float degrees) { return degrees * radians_per_degree; }
 
 Rasterizer::Rasterizer(size_t width, size_t height, Model &&model)
     : width{(int)width}, height{(int)height}, model{model},
-      camera{Vec3{0.f, 0.f, 3.f}, Vec3{0.f}}, depth_buffer{width, height},
+      camera{Vec3{0.f, 2.f, 2.f}, Vec3{0.f}}, depth_buffer{width, height},
       color_buffer{width, height}
 {
     if (SDL_Init(SDL_INIT_VIDEO) < 0)
@@ -87,6 +87,9 @@ void Rasterizer::run()
                     break;
                 }
                 break;
+            case SDL_MOUSEWHEEL:
+                camera.zoom(event.wheel.y);
+                camera.update(Vec2{0});
             }
         }
 
@@ -122,7 +125,7 @@ int middle_mouse_down()
 
 void Rasterizer::draw_wireframe()
 {
-    const Vec3 model_scale = Vec3{1.5f};
+    const Vec3 model_scale = Vec3{1.f};
 
     auto new_mouse_position = get_mouse_position();
 

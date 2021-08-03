@@ -21,6 +21,7 @@ class Camera
     Camera(Vec3 position, Vec3 target, Vec3 up = Vec3::up());
 
     void update(Vec2 delta);
+    void zoom(int direction);
 
     const Mat4 &get_view() const;
 };

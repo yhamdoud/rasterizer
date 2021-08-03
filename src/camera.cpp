@@ -22,4 +22,12 @@ void Camera::update(Vec2 delta)
     view = look_at(position, target, up);
 }
 
+void Camera::zoom(int direction)
+{
+    if (direction > 0)
+        position *= 1.1;
+    else
+        position *= 0.9;
+}
+
 const Mat4 &Camera::get_view() const { return view; }
