@@ -321,7 +321,8 @@ using IVec2 = Vector<int, 2>;
 using IVec3 = Vector<int, 3>;
 using IVec4 = Vector<int, 4>;
 
-using Color = Vec4;
+using Color = Vector<float, 4>;
+using Color8 = Vector<uint8_t, 4>;
 
 namespace colors
 {

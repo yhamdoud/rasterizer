@@ -1,7 +1,7 @@
 #pragma once
 
-#include <SDL_render.h>
 #include <filesystem>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -25,12 +25,33 @@ class Mesh
     Mesh(std::vector<Vertex> vertices) : vertices{std::move(vertices)} {}
 };
 
+class Texture
+{
+    int width;
+    int height;
+    int channel_count;
+
+    std::unique_ptr<std::uint8_t> data;
+
+  public:
+    Texture(int width, int height, int channel_count,
+            std::unique_ptr<std::uint8_t> data);
+
+    static std::optional<Texture> from_file(const std::filesystem::path &path);
+
+    Color8 operator()(int x, int y);
+    Color8 operator()(IVec2 c);
+
+    Color8 operator()(float u, float v);
+    Color8 operator()(Vec2 c);
+};
+
 class Model
 {
   public:
-    Mesh mesh;
+    std::unique_ptr<Mesh> mesh;
+    std::unique_ptr<Texture> diffuse_texture;
 
-    Model(Mesh &&mesh);
     static Model from_obj(const std::filesystem::path &path);
 };
 

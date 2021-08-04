@@ -1,23 +1,80 @@
+
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <sys/types.h>
 #include <vector>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 #include "model.hpp"
 #include "vector.hpp"
 
+using std::byte;
 using std::istringstream;
+using std::optional;
 using std::string;
 using std::string_view;
 using std::vector;
+using std::filesystem::path;
 
 namespace rasterizer
 {
 
-Model::Model(Mesh &&mesh) : mesh{mesh} {}
+Texture::Texture(int width, int height, int channel_count,
+                 std::unique_ptr<uint8_t> data)
+    : width{width}, height{height},
+      channel_count{channel_count}, data{std::move(data)}
+{
+}
+
+Color8 Texture::operator()(float u, float v)
+{
+    return (*this)(static_cast<int>(round(u * width - 0.5)),
+                   static_cast<int>(round(v * height - 0.5)));
+}
+
+Color8 Texture::operator()(Vec2 c) { return (*this)(c.x, c.y); }
+
+Color8 Texture::operator()(int x, int y)
+{
+    // FIXME: Add support for clamping, repeat, etc.
+    if (x >= width || y >= height)
+        return Color8{0};
+
+    uint8_t *pixel = data.get() + (y * width + x) * channel_count;
+
+    switch (channel_count)
+    {
+    case 3:
+        return Color8{pixel[0], pixel[1], pixel[2], 0};
+    case 4:
+        return Color8{pixel[0], pixel[1], pixel[2], pixel[3]};
+    default:
+        abort();
+    }
+}
+
+Color8 Texture::operator()(IVec2 c) { return (*this)(c.x, c.y); }
+
+optional<Texture> Texture::from_file(const path &filename)
+{
+    int width, height, chan_count;
+
+    auto *data = reinterpret_cast<uint8_t *>(
+        stbi_load(filename.c_str(), &width, &height, &chan_count, 0));
+
+    return data == nullptr
+               ? std::nullopt
+               : std::optional(Texture{width, height, chan_count,
+                                       std::unique_ptr<uint8_t>{data}});
+}
 
 Model Model::from_obj(const std::filesystem::path &path)
 {
@@ -63,23 +120,22 @@ Model Model::from_obj(const std::filesystem::path &path)
             string ln;
             getline(ss, ln);
 
-            std::array<int, 3> vi, uvi, ni;
+            std::array<int, 3> v, uv, n;
 
-            if (sscanf(ln.c_str(), "%d/%d/%d %d/%d/%d %d/%d/%d\n", &vi[0],
-                       &uvi[0], &ni[0], &vi[1], &uvi[1], &ni[1], &vi[2],
-                       &uvi[2], &ni[2]) == 9)
+            if (sscanf(ln.c_str(), "%d/%d/%d %d/%d/%d %d/%d/%d\n", &v[0],
+                       &uv[0], &n[0], &v[1], &uv[1], &n[1], &v[2], &uv[2],
+                       &n[2]) == 9)
             {
                 // OBJ uses zero based-indexing.
                 for (auto i = 0; i < 3; i++)
-                    vertices.push_back(Vertex{positions[--vi[i]],
-                                              normals[--ni[i]], uvs[--uvi[i]]});
+                    vertices.push_back(Vertex{positions[--v[i]],
+                                              normals[--n[i]], uvs[--uv[i]]});
             }
-            else if (sscanf(ln.c_str(), "%d %d %d", &vi[0], &vi[1], &vi[2]) ==
-                     3)
+            else if (sscanf(ln.c_str(), "%d %d %d", &v[0], &v[1], &v[2]) == 3)
             {
                 for (auto i = 0; i < 3; i++)
                     vertices.push_back(
-                        Vertex{positions[--vi[i]], Vec3{0}, Vec2{0}});
+                        Vertex{positions[--v[i]], Vec3{0}, Vec2{0}});
             }
             else
             {
@@ -94,7 +150,9 @@ Model Model::from_obj(const std::filesystem::path &path)
     if (fs.bad())
         throw std::runtime_error{"Error while reading file: " + path.string()};
 
-    return Model{Mesh{vertices}};
+    Model model{};
+    model.mesh = std::make_unique<Mesh>(Mesh{vertices});
+    return model;
 }
 
 } // namespace rasterizer

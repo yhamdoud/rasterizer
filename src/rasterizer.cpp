@@ -38,7 +38,7 @@ static IVec2 get_mouse_position()
 static float radians(float degrees) { return degrees * radians_per_degree; }
 
 Rasterizer::Rasterizer(size_t width, size_t height, Model &&model)
-    : width{(int)width}, height{(int)height}, model{model},
+    : width{(int)width}, height{(int)height}, model{std::move(model)},
       camera{Vec3{0.f, 2.f, 2.f}, Vec3{0.f}}, depth_buffer{width, height},
       color_buffer{width, height}
 {
@@ -140,7 +140,7 @@ void Rasterizer::draw_wireframe()
 
     const Mat4 mvp = proj * camera.get_view() * model;
 
-    auto mesh = this->model.mesh;
+    const auto &mesh = *(this->model.mesh);
 
     for (size_t i = 0; i < mesh.vertices.size(); i += 3)
     {
@@ -163,10 +163,6 @@ void Rasterizer::draw_wireframe()
             return p.xyz;
         };
 
-        auto p1 = viewport(v1.position);
-        auto p2 = viewport(v2.position);
-        auto p3 = viewport(v3.position);
-
         auto e1 =
             model * Vec4{v2.position, 1.f} - model * Vec4{v1.position, 1.f};
         auto e2 =
@@ -183,7 +179,11 @@ void Rasterizer::draw_wireframe()
 
         // set_color(Color{col.rgb, 1.f});
 
-        draw_triangle(p1, p2, p3, col);
+        v1.position = viewport(v1.position);
+        v2.position = viewport(v2.position);
+        v3.position = viewport(v3.position);
+
+        draw_triangle(v1, v2, v3, col);
 
         // Viewport transformation.
         set_color(colors::red);
@@ -195,9 +195,10 @@ void Rasterizer::draw_wireframe()
 
 void Rasterizer::draw_point(Vec2 p, Color c)
 {
-    color_buffer(p.x, p.y) =
-        Vector<uint8_t, 4>{c.r * 255, c.g * 255, c.b * 255, c.a * 255};
+    draw_point(p, Color8{c.r * 255, c.g * 255, c.b * 255, c.a * 255});
 }
+
+void Rasterizer::draw_point(Vec2 p, Color8 c) { color_buffer(p.x, p.y) = c; }
 
 void Rasterizer::draw_point(IVec2 p)
 {
@@ -214,22 +215,26 @@ int edge(IVec2 p0, IVec2 p1, IVec2 p2)
     return (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
 }
 
+// void shade_fragment(Vec3 v0, Vec3
+
 // Parallel implementation of Pineda's triangle rasterization algorithm.
 // https://dl.acm.org/doi/pdf/10.1145/54852.378457
 // https://fgiesen.wordpress.com/2013/02/08/triangle-rasterization-in-practice/
 // https://fgiesen.wordpress.com/2013/02/10/optimizing-the-basic-rasterizer/
 // https://scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/
 // https://web.archive.org/web/20130816170418/http://devmaster.net/forums/topic/1145-advanced-rasterization/
-void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
+void Rasterizer::draw_triangle(Vertex v0, Vertex v1, Vertex v2, Color color)
 {
     int prec = 16;
     float fprec = static_cast<float>(prec);
 
-    // FIXME: Snapping pixels to the grid; not good.
     // Use fixed-point screen coordinates for sub-pixel precision.
-    IVec2 p0{std::round(fprec * v0.x), std::round(fprec * v0.y)};
-    IVec2 p1{std::round(fprec * v1.x), std::round(fprec * v1.y)};
-    IVec2 p2{std::round(fprec * v2.x), std::round(fprec * v2.y)};
+    IVec2 p0{std::round(fprec * v0.position.x),
+             std::round(fprec * v0.position.y)};
+    IVec2 p1{std::round(fprec * v1.position.x),
+             std::round(fprec * v1.position.y)};
+    IVec2 p2{std::round(fprec * v2.position.x),
+             std::round(fprec * v2.position.y)};
 
     IVec2 min{std::min({p0.x, p1.x, p2.x}), std::min({p0.y, p1.y, p2.y})};
     min /= prec;
@@ -272,16 +277,31 @@ void Rasterizer::draw_triangle(Vec3 v0, Vec3 v1, Vec3 v2, Color color)
             if (b_col.x > 0 && b_col.y > 0 && b_col.z > 0)
             {
                 // Normalize the barycentric coordinates.
-                Vec3 bfloat = static_cast<Vec3>(b_col);
-                float z = dot(bfloat / area, Vec3{v0.z, v1.z, v2.z});
+                Vec3 b_norm = static_cast<Vec3>(b_col) / area;
+                float z = dot(
+                    b_norm, Vec3{v0.position.z, v1.position.z, v2.position.z});
 
                 if (z < depth_buffer(p.x, p.y))
                 {
                     depth_buffer(p.x, p.y) = z;
-                    draw_point(p, color);
+
+                    if (model.diffuse_texture)
+                    {
+                        Vec2 uv = b_norm.x * v0.uv + b_norm.y * v1.uv +
+                                  b_norm.z * v2.uv;
+
+                        auto c = (*model.diffuse_texture.get())(uv);
+                        draw_point(p, c);
+                    }
+                    else
+                    {
+                        draw_point(p, color);
+                    }
 
                     if (presented_buffer == BufferType::depth)
+                    {
                         draw_point(p, Color{1 / z, 1 / z, 1 / z, 1.f});
+                    }
                 }
             }
 
