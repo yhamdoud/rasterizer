@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
 #include <optional>
 #include <utility>
@@ -27,6 +28,7 @@ class Mesh
 
 class Texture
 {
+
     int width;
     int height;
     int channel_count;
@@ -34,16 +36,24 @@ class Texture
     std::unique_ptr<std::uint8_t> data;
 
   public:
+    enum class WrapMode
+    {
+        repeat,
+        clamp,
+    };
+
+    WrapMode mode = WrapMode::repeat;
+
     Texture(int width, int height, int channel_count,
             std::unique_ptr<std::uint8_t> data);
 
     static std::optional<Texture> from_file(const std::filesystem::path &path);
 
-    Color8 operator()(int x, int y);
-    Color8 operator()(IVec2 c);
+    Color8 operator()(int x, int y) const;
+    Color8 operator()(IVec2 c) const;
 
-    Color8 operator()(float u, float v);
-    Color8 operator()(Vec2 c);
+    Color8 operator()(float u, float v) const;
+    Color8 operator()(Vec2 c) const;
 };
 
 class Model

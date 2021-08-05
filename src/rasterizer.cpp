@@ -1,32 +1,27 @@
-#include <SDL_keycode.h>
-#include <SDL_render.h>
-#include <SDL_timer.h>
 #include <iostream>
 #include <limits>
 #include <memory>
-#include <numbers>
 #include <stdexcept>
 
 #include <SDL2/SDL.h>
+#include <SDL_keycode.h>
+#include <SDL_messagebox.h>
 #include <SDL_mouse.h>
+#include <SDL_render.h>
+#include <SDL_timer.h>
 #include <SDL_video.h>
 
 #include "camera.hpp"
 #include "matrix.hpp"
 #include "model.hpp"
 #include "rasterizer.hpp"
+#include "utils.hpp"
 #include "vector.hpp"
 
-using namespace rasterizer;
 using std::round;
 
-constexpr double radians_per_degree = std::numbers::pi / 180.f;
-
-template <typename T>
-static bool in_bounds(const T &val, const T &low, const T &high)
-{
-    return low < val && val < high;
-}
+using namespace rasterizer;
+using namespace utils;
 
 static IVec2 get_mouse_position()
 {
@@ -35,26 +30,26 @@ static IVec2 get_mouse_position()
     return IVec2{x, y};
 }
 
-static float radians(float degrees) { return degrees * radians_per_degree; }
-
-Rasterizer::Rasterizer(size_t width, size_t height, Model &&model)
-    : width{(int)width}, height{(int)height}, model{std::move(model)},
-      camera{Vec3{0.f, 2.f, 2.f}, Vec3{0.f}}, depth_buffer{width, height},
-      color_buffer{width, height}
+Rasterizer::Rasterizer(int width, int height, Model &&model)
+    : width{width}, height{height}, model{std::move(model)},
+      camera{Vec3{0.f, 2.f, 2.f}, Vec3{0.f}},
+      depth_buffer{static_cast<size_t>(width), static_cast<size_t>(height)},
+      color_buffer{static_cast<size_t>(width), static_cast<size_t>(height)},
+      shader(width, height)
 {
     if (SDL_Init(SDL_INIT_VIDEO) < 0)
         throw std::runtime_error("Failed to initialize SDL.");
 
     SDL_CreateWindowAndRenderer(width, height, 0, &window, &renderer);
-    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
-                                SDL_TEXTUREACCESS_STATIC, width, height);
+    color_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                                      SDL_TEXTUREACCESS_STATIC, width, height);
 }
 
 Rasterizer::~Rasterizer()
 {
     SDL_DestroyWindow(window);
     SDL_DestroyRenderer(renderer);
-    SDL_DestroyTexture(texture);
+    SDL_DestroyTexture(color_texture);
 
     SDL_Quit();
 }
@@ -93,14 +88,14 @@ void Rasterizer::run()
             }
         }
 
-        draw_wireframe();
+        draw();
 
-        SDL_UpdateTexture(texture, nullptr, color_buffer.get(),
+        SDL_UpdateTexture(color_texture, nullptr, color_buffer.get(),
                           width * 4 * sizeof(uint8_t));
 
         set_color(clear_color);
         SDL_RenderClear(renderer);
-        SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+        SDL_RenderCopy(renderer, color_texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
 
         color_buffer.fill(0.f);
@@ -121,11 +116,13 @@ int middle_mouse_down()
     return SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_MIDDLE;
 }
 
-// Object to viewport.
-
-void Rasterizer::draw_wireframe()
+void Rasterizer::draw()
 {
-    const Vec3 model_scale = Vec3{1.f};
+    shader.uniforms.mvp =
+        perspective(utils::radians(90.f), (float)width / (float)height, 0.1f,
+                    100.f) *
+        camera.get_view();
+    shader.uniforms.texture = model.diffuse_texture.get();
 
     auto new_mouse_position = get_mouse_position();
 
@@ -134,62 +131,21 @@ void Rasterizer::draw_wireframe()
 
     mouse_position = new_mouse_position;
 
-    const Mat4 model = scale(Mat4{1.f}, model_scale);
-    const Mat4 proj =
-        perspective(radians(90.f), (float)width / (float)height, 0.1f, 100.f);
-
-    const Mat4 mvp = proj * camera.get_view() * model;
-
-    const auto &mesh = *(this->model.mesh);
-
-    for (size_t i = 0; i < mesh.vertices.size(); i += 3)
+    for (size_t i = 0; i < model.mesh->vertices.size(); i += 3)
     {
-        auto v1 = mesh.vertices[i];
-        auto v2 = mesh.vertices[i + 1];
-        auto v3 = mesh.vertices[i + 2];
+        auto &v0 = model.mesh->vertices[i];
+        auto &v1 = model.mesh->vertices[i + 1];
+        auto &v2 = model.mesh->vertices[i + 2];
 
-        auto viewport = [&](const Vec3 &in)
-        {
-            // Model to clip space.
-            Vec4 p = mvp * Vec4{in, 1.f};
+        auto out1 = shader.vertex(v0);
+        auto out2 = shader.vertex(v1);
+        auto out3 = shader.vertex(v2);
 
-            // Perspective divide to NDC space.
-            p /= p.w;
+        shader.post_process(out1);
+        shader.post_process(out2);
+        shader.post_process(out3);
 
-            // Viewport
-            p.x = (p.x + 1.f) / 2.f * (float)width;
-            p.y = (1.f - p.y) / 2.f * (float)height;
-
-            return p.xyz;
-        };
-
-        auto e1 =
-            model * Vec4{v2.position, 1.f} - model * Vec4{v1.position, 1.f};
-        auto e2 =
-            model * Vec4{v3.position, 1.f} - model * Vec4{v1.position, 1.f};
-
-        Vec3 normal = normalize(cross(e1.xyz, e2.xyz));
-        Vec3 l = normalize(Vec3{1.f, 0.5f, 0.25f});
-
-        Color ambient{0.1f};
-
-        float n_dot_l = std::max(dot(normal, l), 0.f);
-
-        auto col = ambient + n_dot_l * colors::white;
-
-        // set_color(Color{col.rgb, 1.f});
-
-        v1.position = viewport(v1.position);
-        v2.position = viewport(v2.position);
-        v3.position = viewport(v3.position);
-
-        draw_triangle(v1, v2, v3, col);
-
-        // Viewport transformation.
-        set_color(colors::red);
-        // draw_line(viewport(p1.xy), viewport(p2.xy));
-        // draw_line(viewport(p2.xy), viewport(p3.xy));
-        // draw_line(viewport(p1.xy), viewport(p3.xy));
+        draw_triangle(out1, out2, out3);
     }
 }
 
@@ -223,18 +179,18 @@ int edge(IVec2 p0, IVec2 p1, IVec2 p2)
 // https://fgiesen.wordpress.com/2013/02/10/optimizing-the-basic-rasterizer/
 // https://scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/
 // https://web.archive.org/web/20130816170418/http://devmaster.net/forums/topic/1145-advanced-rasterization/
-void Rasterizer::draw_triangle(Vertex v0, Vertex v1, Vertex v2, Color color)
+void Rasterizer::draw_triangle(Varying in1, Varying in2, Varying in3)
 {
     int prec = 16;
     float fprec = static_cast<float>(prec);
 
     // Use fixed-point screen coordinates for sub-pixel precision.
-    IVec2 p0{std::round(fprec * v0.position.x),
-             std::round(fprec * v0.position.y)};
-    IVec2 p1{std::round(fprec * v1.position.x),
-             std::round(fprec * v1.position.y)};
-    IVec2 p2{std::round(fprec * v2.position.x),
-             std::round(fprec * v2.position.y)};
+    IVec2 p0{std::round(fprec * in1.position.x),
+             std::round(fprec * in1.position.y)};
+    IVec2 p1{std::round(fprec * in2.position.x),
+             std::round(fprec * in2.position.y)};
+    IVec2 p2{std::round(fprec * in3.position.x),
+             std::round(fprec * in3.position.y)};
 
     IVec2 min{std::min({p0.x, p1.x, p2.x}), std::min({p0.y, p1.y, p2.y})};
     min /= prec;
@@ -252,63 +208,53 @@ void Rasterizer::draw_triangle(Vertex v0, Vertex v1, Vertex v2, Color color)
     IVec2 p{round(fprec * (min.x + 0.5f)), round(fprec * (min.y + 0.5f))};
 
     // Precompute triangle edges for incremental computation of edge function.
-    IVec3 b_row{edge(p1, p2, p), edge(p2, p0, p), edge(p0, p1, p)};
-    IVec3 b_dx{p2.y - p1.y, p0.y - p2.y, p1.y - p0.y};
-    IVec3 b_dy{p2.x - p1.x, p0.x - p2.x, p1.x - p0.x};
-    b_dx *= prec;
-    b_dy *= prec;
+    IVec3 bc_row{edge(p1, p2, p), edge(p2, p0, p), edge(p0, p1, p)};
+    IVec3 bc_dx{p2.y - p1.y, p0.y - p2.y, p1.y - p0.y};
+    IVec3 bc_dy{p2.x - p1.x, p0.x - p2.x, p1.x - p0.x};
+    bc_dx *= prec;
+    bc_dy *= prec;
 
-    int area = edge(p0, p1, p2);
+    // 1 / (2 * area of triangle)
+    float area_reciprocal = 1.f / edge(p0, p1, p2);
 
     // Adhere to the top-left rule fill convention by adding bias values.
     // In clockwise order, left edges must go up while top edges stay horizontal
     // and go right.
-    b_row += prec * IVec3{b_dy.x > 0 || (b_dy.x == 0 && b_dx.x > 0),
-                          b_dy.y > 0 || (b_dy.y == 0 && b_dx.y > 0),
-                          b_dy.z > 0 || (b_dy.z == 0 && b_dx.z > 0)};
+    bc_row += prec * IVec3{bc_dy.x > 0 || (bc_dy.x == 0 && bc_dx.x > 0),
+                           bc_dy.y > 0 || (bc_dy.y == 0 && bc_dx.y > 0),
+                           bc_dy.z > 0 || (bc_dy.z == 0 && bc_dx.z > 0)};
 
     for (p.y = min.y; p.y <= max.y; p.y++)
     {
-        auto b_col = b_row;
+        auto bc = bc_row;
 
         for (p.x = min.x; p.x <= max.x; p.x++)
         {
             // Draw pixel if p is inside triangle.
-            if (b_col.x > 0 && b_col.y > 0 && b_col.z > 0)
+            if (bc.x > 0 && bc.y > 0 && bc.z > 0)
             {
                 // Normalize the barycentric coordinates.
-                Vec3 b_norm = static_cast<Vec3>(b_col) / area;
+                // TODO: Maybe we can do this using fixed-point arithmetic?
+                auto bc_n = static_cast<Vec3>(bc) * area_reciprocal;
                 float z = dot(
-                    b_norm, Vec3{v0.position.z, v1.position.z, v2.position.z});
+                    bc_n, Vec3{in1.position.z, in2.position.z, in3.position.z});
 
                 if (z < depth_buffer(p.x, p.y))
                 {
                     depth_buffer(p.x, p.y) = z;
 
-                    if (model.diffuse_texture)
-                    {
-                        Vec2 uv = b_norm.x * v0.uv + b_norm.y * v1.uv +
-                                  b_norm.z * v2.uv;
-
-                        auto c = (*model.diffuse_texture.get())(uv);
-                        draw_point(p, c);
-                    }
-                    else
-                    {
-                        draw_point(p, color);
-                    }
+                    draw_point(
+                        p, shader.fragment(shader.vary(bc_n, in1, in2, in3)));
 
                     if (presented_buffer == BufferType::depth)
-                    {
                         draw_point(p, Color{1 / z, 1 / z, 1 / z, 1.f});
-                    }
                 }
             }
 
-            b_col -= b_dx;
+            bc -= bc_dx;
         }
 
-        b_row += b_dy;
+        bc_row += bc_dy;
     }
 }
 
@@ -316,7 +262,6 @@ void Rasterizer::draw_triangle(Vertex v0, Vertex v1, Vertex v2, Color color)
 // https://www.cs.helsinki.fi/group/goa/mallinnus/lines/bresenh.html
 void Rasterizer::draw_line(IVec2 p1, IVec2 p2)
 {
-
     if (!in_bounds(p1.x, 0, width) || !in_bounds(p2.x, 0, width) ||
         !in_bounds(p1.y, 0, height) || !in_bounds(p1.y, 0, height))
         return;

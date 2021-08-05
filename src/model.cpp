@@ -17,6 +17,7 @@
 #include "vector.hpp"
 
 using std::byte;
+using std::clamp;
 using std::istringstream;
 using std::optional;
 using std::string;
@@ -34,19 +35,27 @@ Texture::Texture(int width, int height, int channel_count,
 {
 }
 
-Color8 Texture::operator()(float u, float v)
+Color8 Texture::operator()(float u, float v) const
 {
     return (*this)(static_cast<int>(round(u * width - 0.5)),
                    static_cast<int>(round(v * height - 0.5)));
 }
 
-Color8 Texture::operator()(Vec2 c) { return (*this)(c.x, c.y); }
+Color8 Texture::operator()(Vec2 c) const { return (*this)(c.x, c.y); }
 
-Color8 Texture::operator()(int x, int y)
+Color8 Texture::operator()(int x, int y) const
 {
-    // FIXME: Add support for clamping, repeat, etc.
-    if (x >= width || y >= height)
-        return Color8{0};
+    switch (mode)
+    {
+    case WrapMode::repeat:
+        x = abs(x % width);
+        y = abs(y % height);
+        break;
+    case WrapMode::clamp:
+        x = clamp(x, 0, width - 1);
+        y = clamp(y, 0, height - 1);
+        break;
+    }
 
     uint8_t *pixel = data.get() + (y * width + x) * channel_count;
 
@@ -55,13 +64,14 @@ Color8 Texture::operator()(int x, int y)
     case 3:
         return Color8{pixel[0], pixel[1], pixel[2], 0};
     case 4:
+        // TODO: reinterpret_cast or maybe return a reference?
         return Color8{pixel[0], pixel[1], pixel[2], pixel[3]};
     default:
         abort();
     }
 }
 
-Color8 Texture::operator()(IVec2 c) { return (*this)(c.x, c.y); }
+Color8 Texture::operator()(IVec2 c) const { return (*this)(c.x, c.y); }
 
 optional<Texture> Texture::from_file(const path &filename)
 {
