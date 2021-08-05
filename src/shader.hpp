@@ -9,7 +9,7 @@ namespace rasterizer
 
 struct Varying
 {
-    Vec4 position;
+    Vec4 pos;
     Vec3 normal;
     Vec2 uv;
 };

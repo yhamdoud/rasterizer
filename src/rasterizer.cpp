@@ -179,18 +179,16 @@ int edge(IVec2 p0, IVec2 p1, IVec2 p2)
 // https://fgiesen.wordpress.com/2013/02/10/optimizing-the-basic-rasterizer/
 // https://scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/
 // https://web.archive.org/web/20130816170418/http://devmaster.net/forums/topic/1145-advanced-rasterization/
-void Rasterizer::draw_triangle(Varying in1, Varying in2, Varying in3)
+void Rasterizer::draw_triangle(const Varying &in0, const Varying &in1,
+                               const Varying &in2)
 {
     int prec = 16;
     float fprec = static_cast<float>(prec);
 
     // Use fixed-point screen coordinates for sub-pixel precision.
-    IVec2 p0{std::round(fprec * in1.position.x),
-             std::round(fprec * in1.position.y)};
-    IVec2 p1{std::round(fprec * in2.position.x),
-             std::round(fprec * in2.position.y)};
-    IVec2 p2{std::round(fprec * in3.position.x),
-             std::round(fprec * in3.position.y)};
+    IVec2 p0{std::round(fprec * in0.pos.x), std::round(fprec * in0.pos.y)};
+    IVec2 p1{std::round(fprec * in1.pos.x), std::round(fprec * in1.pos.y)};
+    IVec2 p2{std::round(fprec * in2.pos.x), std::round(fprec * in2.pos.y)};
 
     IVec2 min{std::min({p0.x, p1.x, p2.x}), std::min({p0.y, p1.y, p2.y})};
     min /= prec;
@@ -214,8 +212,8 @@ void Rasterizer::draw_triangle(Varying in1, Varying in2, Varying in3)
     bc_dx *= prec;
     bc_dy *= prec;
 
-    // 1 / (2 * area of triangle)
-    float area_reciprocal = 1.f / edge(p0, p1, p2);
+    // 1 / (2 * Δtriangle)
+    float area_reciprocal = 1.f / static_cast<float>(edge(p0, p1, p2));
 
     // Adhere to the top-left rule fill convention by adding bias values.
     // In clockwise order, left edges must go up while top edges stay horizontal
@@ -236,15 +234,21 @@ void Rasterizer::draw_triangle(Varying in1, Varying in2, Varying in3)
                 // Normalize the barycentric coordinates.
                 // TODO: Maybe we can do this using fixed-point arithmetic?
                 auto bc_n = static_cast<Vec3>(bc) * area_reciprocal;
-                float z = dot(
-                    bc_n, Vec3{in1.position.z, in2.position.z, in3.position.z});
+
+                // We don't need perspective correction here since we
+                // interpolate 1/z.
+                float z = dot(bc_n, Vec3{in0.pos.z, in1.pos.z, in2.pos.z});
 
                 if (z < depth_buffer(p.x, p.y))
                 {
                     depth_buffer(p.x, p.y) = z;
 
+                    // Perform perspective correction.
+                    bc_n *= Vec3{in0.pos.w, in1.pos.w, in2.pos.w};
+                    bc_n /= bc_n.x + bc_n.y + bc_n.z;
+
                     draw_point(
-                        p, shader.fragment(shader.vary(bc_n, in1, in2, in3)));
+                        p, shader.fragment(shader.vary(bc_n, in0, in1, in2)));
 
                     if (presented_buffer == BufferType::depth)
                         draw_point(p, Color{1 / z, 1 / z, 1 / z, 1.f});

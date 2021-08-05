@@ -15,22 +15,21 @@ Varying Shader::vertex(const Vertex &in)
 
 void Shader::post_process(Varying &v)
 {
-    // Perspective divide to NDC space. Homogenize, but keep reciprocal of w.
-    v.position.w = 1 / v.position.w;
-    v.position.x *= v.position.w;
-    v.position.y *= v.position.w;
-    v.position.z *= v.position.w;
+    // Perspective divide to NDC from clip space.
+    v.pos.w = 1 / v.pos.w;
+    // Keep the reciprocal of w for perspective correction.
+    v.pos.xyz *= v.pos.w;
 
     // Viewport transform to screen space.
-    v.position.x = (v.position.x + 1.f) / 2.f * (float)width;
-    v.position.y = (1.f - v.position.y) / 2.f * (float)height;
+    v.pos.x = (v.pos.x + 1.f) / 2.f * (float)width;
+    v.pos.y = (1.f - v.pos.y) / 2.f * (float)height;
 }
 
 Varying Shader::vary(Vec3 bc, const Varying &v0, const Varying &v1,
                      const Varying &v2)
 {
     return Varying{
-        bc.x * v0.position + bc.y * v1.position + bc.z * v2.position,
+        bc.x * v0.pos + bc.y * v1.pos + bc.z * v2.pos,
         bc.x * v0.normal + bc.y * v1.normal + bc.z * v2.normal,
         bc.x * v0.uv + bc.y * v1.uv + bc.z * v2.uv,
     };

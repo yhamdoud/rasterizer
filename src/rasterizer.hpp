@@ -54,7 +54,8 @@ class Rasterizer
 
     void run();
     void draw();
-    void draw_triangle(Varying in0, Varying in1, Varying in2);
+    void draw_triangle(const Varying &in0, const Varying &in1,
+                       const Varying &in2);
     void draw_line(IVec2 p1, IVec2 p2);
     void draw_point(IVec2 p);
     void draw_point(Vec2 p, Color8 c);
