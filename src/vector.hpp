@@ -26,8 +26,8 @@ template <typename Vec, typename T> struct VectorBase
     const Vec &self() const { return static_cast<const Vec &>(*this); }
 
     // Iterators
-    constexpr auto begin() const noexcept { return self().data.begin(); }
-    constexpr auto end() const noexcept { return self().data.end(); }
+    constexpr auto begin() noexcept { return self().data.begin(); }
+    constexpr auto end() noexcept { return self().data.end(); }
     constexpr auto cbegin() const noexcept { return self().data.cbegin(); }
     constexpr auto cend() const noexcept { return self().data.cend(); }
 
@@ -157,6 +157,22 @@ template <typename Vec, typename T> struct VectorBase
     {
         return (1 - t) * v1 + t * v2;
     }
+
+    friend constexpr Vec round(Vec v)
+    {
+        for (auto &e : v)
+            e = std::round(e);
+
+        return v;
+    }
+
+    friend constexpr Vec floor(Vec v)
+    {
+        for (auto &e : v)
+            e = std::floor(e);
+
+        return v;
+    }
 };
 
 template <typename T, size_t n> struct Vector : VectorBase<Vector<T, n>, T>
@@ -200,6 +216,11 @@ template <typename T> struct Vector<T, 2> : VectorBase<Vector<T, 2>, T>
         struct
         {
             T x, y;
+        };
+
+        struct
+        {
+            T u, v;
         };
     };
 };
@@ -277,15 +298,21 @@ template <typename T> struct Vector<T, 4> : VectorBase<Vector<T, 4>, T>
     operator Vector<float, size>() requires(std::is_same_v<T, int>)
     {
         return Vector<float, size>{
-            static_cast<float>(this->x), static_cast<float>(this->y),
-            static_cast<float>(this->z), static_cast<float>(this->w)};
+            static_cast<float>(this->x),
+            static_cast<float>(this->y),
+            static_cast<float>(this->z),
+            static_cast<float>(this->w),
+        };
     }
 
-    explicit operator Vector<int, size>() requires(std::is_same_v<T, float>)
+    template <typename U> explicit operator Vector<U, size>()
     {
-        return Vector<int, size>{
-            static_cast<int>(this->x), static_cast<int>(this->y),
-            static_cast<int>(this->z), static_cast<int>(this->w)};
+        return Vector<U, size>{
+            static_cast<U>(this->x),
+            static_cast<U>(this->y),
+            static_cast<U>(this->z),
+            static_cast<U>(this->w),
+        };
     }
 
     constexpr Vector(const Vector<T, 3> &v, const T &e) : data{v.x, v.y, v.z, e}

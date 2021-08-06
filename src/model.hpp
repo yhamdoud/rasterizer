@@ -28,12 +28,13 @@ class Mesh
 
 class Texture
 {
-
     int width;
     int height;
     int channel_count;
 
     std::unique_ptr<std::uint8_t> data;
+
+    constexpr IVec2 texels(Vec2 tex_coords) const;
 
   public:
     enum class WrapMode
@@ -42,18 +43,31 @@ class Texture
         clamp,
     };
 
-    WrapMode mode = WrapMode::repeat;
+    enum class SampleMode
+    {
+        nearest,
+        bilinear,
+    };
+
+    WrapMode wrap = WrapMode::repeat;
+    SampleMode sample = SampleMode::bilinear;
 
     Texture(int width, int height, int channel_count,
             std::unique_ptr<std::uint8_t> data);
 
     static std::optional<Texture> from_file(const std::filesystem::path &path);
 
-    Color8 operator()(int x, int y) const;
-    Color8 operator()(IVec2 c) const;
+    // Index texture using normalized floating point texture coordinates.
+    // Conversion to texel indices is based on the texture sample mode.
+    Color8 operator()(Vec2 tex_coords) const;
 
-    Color8 operator()(float u, float v) const;
-    Color8 operator()(Vec2 c) const;
+    // Index texture using integer texel indices. Out-of-bounds access is based
+    // on the texture wrap mode.
+    Color8 operator()(IVec2 texel) const;
+    Color8 operator()(int x, int y) const;
+
+    Color8 sample_bilinear(Vec2 tex_coords) const;
+    Color8 sample_nearest(Vec2 tex_coords) const;
 };
 
 class Model

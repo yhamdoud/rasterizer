@@ -38,6 +38,7 @@ Varying Shader::vary(Vec3 bc, const Varying &v0, const Varying &v1,
 Color8 Shader::fragment(const Varying &in)
 {
     if (uniforms.texture)
+        // return uniforms.texture->sample_bilinear(in.uv);
         return (*uniforms.texture)(in.uv);
     else
         return Color8{255};

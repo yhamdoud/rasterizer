@@ -1,4 +1,3 @@
-
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -14,6 +13,7 @@
 #include "stb_image.h"
 
 #include "model.hpp"
+#include "utils.hpp"
 #include "vector.hpp"
 
 using std::byte;
@@ -28,24 +28,52 @@ using std::filesystem::path;
 namespace rasterizer
 {
 
-Texture::Texture(int width, int height, int channel_count,
-                 std::unique_ptr<uint8_t> data)
-    : width{width}, height{height},
-      channel_count{channel_count}, data{std::move(data)}
+Texture::Texture(int w, int h, int c, std::unique_ptr<uint8_t> d)
+    : width{w}, height{h}, channel_count{c}, data{std::move(d)}
 {
 }
 
-Color8 Texture::operator()(float u, float v) const
+Color8 Texture::sample_bilinear(Vec2 tc) const
 {
-    return (*this)(static_cast<int>(round(u * width - 0.5)),
-                   static_cast<int>(round(v * height - 0.5)));
+    // Translate to (floating point) texel indices.
+    auto t_f = tc * Vec2{width, height} - Vec2{0.5f, 0.5f};
+
+    float u_fract = utils::fract(t_f.u);
+    float v_fract = utils::fract(t_f.v);
+
+    IVec2 t{floor(t_f)};
+
+    auto a = static_cast<Color>((*this)(t.x, t.y));
+    auto b = static_cast<Color>((*this)(t.x + 1, t.y));
+    auto c = static_cast<Color>((*this)(t.x, t.y + 1));
+    auto d = static_cast<Color>((*this)(t.x + 1, t.y + 1));
+
+    return static_cast<Color8>(
+        lerp(lerp(a, b, u_fract), lerp(c, d, u_fract), v_fract));
 }
 
-Color8 Texture::operator()(Vec2 c) const { return (*this)(c.x, c.y); }
+Color8 Texture::sample_nearest(Vec2 tc) const
+{
+    // return (*this)(static_cast<IVec2>(round(tc * Vec2{width - 1, height -
+    // 1})));
+    return (*this)(
+        static_cast<IVec2>(round(tc * Vec2{width, height} - Vec2{0.5f, 0.5f})));
+}
+
+Color8 Texture::operator()(Vec2 tc) const
+{
+    switch (sample)
+    {
+    case SampleMode::nearest:
+        return sample_nearest(tc);
+    case SampleMode::bilinear:
+        return sample_bilinear(tc);
+    };
+}
 
 Color8 Texture::operator()(int x, int y) const
 {
-    switch (mode)
+    switch (wrap)
     {
     case WrapMode::repeat:
         x = abs(x % width);
@@ -71,7 +99,7 @@ Color8 Texture::operator()(int x, int y) const
     }
 }
 
-Color8 Texture::operator()(IVec2 c) const { return (*this)(c.x, c.y); }
+Color8 Texture::operator()(IVec2 t) const { return (*this)(t.x, t.y); }
 
 optional<Texture> Texture::from_file(const path &filename)
 {
