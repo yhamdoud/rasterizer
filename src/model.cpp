@@ -48,6 +48,7 @@ Color8 Texture::sample_bilinear(Vec2 tc) const
     auto c = static_cast<Color>((*this)(t.x, t.y + 1));
     auto d = static_cast<Color>((*this)(t.x + 1, t.y + 1));
 
+    // FIXME: Return Color instead to safe on conversions.
     return static_cast<Color8>(
         lerp(lerp(a, b, u_fract), lerp(c, d, u_fract), v_fract));
 }
